@@ -1,0 +1,1256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>MOBILE SUIT 045MW // COMBAT NAV</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+  :root{
+    --void:#04070a;
+    --cyan:#5eebe0;
+    --cyan-dim:#2c6e6a;
+    --amber:#ffb02e;
+    --red:#ff4d5e;
+    --glass: rgba(8,22,24,0.55);
+    --line: rgba(94,235,224,0.35);
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html,body{height:100%; background:var(--void); overflow:hidden; font-family:'Share Tech Mono', monospace;}
+  body{
+    padding-top:env(safe-area-inset-top,0px);
+    padding-bottom:env(safe-area-inset-bottom,0px);
+  }
+  #scene{position:fixed; inset:0; z-index:0; cursor:crosshair; touch-action:none;}
+
+  #hud{position:fixed; inset:0; z-index:2; pointer-events:none; color:var(--cyan);}
+  .scanlines{position:fixed; inset:0; z-index:3; pointer-events:none; mix-blend-mode:overlay;
+    background:repeating-linear-gradient(to bottom, rgba(255,255,255,0.05) 0px, rgba(255,255,255,0.05) 1px, transparent 2px, transparent 3px);
+    animation:flicker 6s infinite;
+  }
+  @keyframes flicker{0%,97%,100%{opacity:.5} 98%{opacity:.15} 99%{opacity:.6}}
+
+  .frame-corner{position:absolute; width:54px; height:54px; border-color:var(--cyan); opacity:.85;}
+  .tl{top:14px; left:14px; border-top:3px solid; border-left:3px solid;}
+  .tr{top:14px; right:14px; border-top:3px solid; border-right:3px solid;}
+  .bl{bottom:14px; left:14px; border-bottom:3px solid; border-left:3px solid;}
+  .br{bottom:14px; right:14px; border-bottom:3px solid; border-right:3px solid;}
+
+  #footerHud .call{font-family:'Orbitron',sans-serif; font-weight:900; font-size:clamp(14px,2vw,20px); letter-spacing:3px; color:var(--cyan); text-shadow:0 0 12px rgba(94,235,224,.6);}
+  #footerHud .sub{font-size:10px; letter-spacing:4px; color:var(--cyan-dim); margin-top:3px; margin-bottom:8px;}
+  .score{font-family:'Orbitron',sans-serif; font-size:15px; letter-spacing:2px; color:var(--amber); margin-bottom:6px; text-shadow:0 0 8px rgba(255,176,46,.55);}
+
+  .reticle{position:absolute; top:50%; left:50%; width:120px; height:120px; transform:translate(-50%,-50%); opacity:.55;}
+  .reticle svg{width:100%; height:100%; filter:drop-shadow(0 0 6px rgba(94,235,224,.5));}
+
+  .panel{position:absolute; pointer-events:auto; background:var(--glass); border:1px solid var(--line);
+    backdrop-filter:blur(3px); clip-path:polygon(14px 0,100% 0,100% calc(100% - 14px),calc(100% - 14px) 100%,0 100%,0 14px);}
+  .panel h2{font-family:'Orbitron',sans-serif; font-size:12px; letter-spacing:3px; color:var(--amber); padding:10px 14px 8px; border-bottom:1px solid var(--line);
+    cursor:pointer; user-select:none; display:flex; align-items:center; justify-content:space-between; gap:8px;}
+  .panel h2::after{content:'\2212'; font-size:13px; color:var(--cyan-dim); flex-shrink:0;}
+  .panel.collapsed h2{border-bottom-color:transparent;}
+  .panel.collapsed h2::after{content:'\002B';}
+  .panel.collapsed .body{display:none;}
+  .panel .body{padding:12px 14px;}
+
+  #ctrl{left:16px; bottom:16px; width:min(300px,42vw); font-size:12px;}
+  #ctrl .row{display:flex; align-items:center; gap:8px; margin-bottom:10px;}
+  #ctrl label{width:72px; font-size:11px; color:var(--cyan-dim); letter-spacing:1px;}
+  #ctrl input[type=range]{flex:1; accent-color:var(--cyan); height:4px;}
+  #ctrl .readout{font-family:'Orbitron',sans-serif; font-size:20px; color:var(--cyan); text-shadow:0 0 8px rgba(94,235,224,.6); margin-bottom:8px;}
+  #ctrl .readout span{font-size:11px; color:var(--cyan-dim);}
+  #ctrl .presets{display:flex; gap:6px;}
+  #ctrl button{flex:1; pointer-events:auto; cursor:pointer; background:transparent; border:1px solid var(--line); color:var(--cyan);
+    font-family:'Share Tech Mono',monospace; font-size:10px; letter-spacing:2px; padding:7px 0; transition:.15s;}
+  #ctrl button:hover{background:rgba(94,235,224,.15); border-color:var(--cyan);}
+  #ctrl button.active{background:var(--cyan); color:#04211f; border-color:var(--cyan);}
+  #ctrl button:focus-visible{outline:2px solid var(--amber); outline-offset:2px;}
+  #heatbar{position:relative; height:4px; background:rgba(94,235,224,.15); margin:12px 0 4px;}
+  #heatfill{position:absolute; top:0; left:0; height:100%; width:0%; background:var(--cyan); transition:background .15s;}
+  #heatfill.hot{background:var(--amber);}
+  #heatfill.overheat{background:var(--red);}
+  #heatlabel{font-size:9px; letter-spacing:2px; color:var(--cyan-dim); display:flex; justify-content:space-between; margin-bottom:6px;}
+  #fireBtn{width:100%; margin-top:2px; padding:9px 0; font-family:'Orbitron',sans-serif; font-weight:700; font-size:12px; letter-spacing:3px;
+    color:var(--red); border:1px solid var(--red); background:rgba(255,77,94,.08);}
+  #fireBtn:hover{background:rgba(255,77,94,.22);}
+  #fireBtn:active{background:var(--red); color:#1a0507;}
+  #fireBtn:disabled{color:var(--cyan-dim); border-color:var(--line); background:transparent; cursor:not-allowed;}
+  #shipSelectBtn1{width:100%; margin-top:8px; padding:7px 0; font-family:'Orbitron',sans-serif; font-size:10px; letter-spacing:2px;
+    color:var(--cyan-dim); border:1px solid var(--line); background:transparent;}
+  #shipSelectBtn1:hover{background:rgba(94,235,224,.12); color:var(--cyan);}
+  .reticle.firing svg{filter:drop-shadow(0 0 14px rgba(255,77,94,.9)); }
+  .reticle.firing{opacity:.9;}
+
+  #map{right:16px; top:16px; width:min(260px,42vw); font-size:11px; max-height:min(62vh,520px); display:flex; flex-direction:column;}
+  #map .body{padding:10px 10px 12px; overflow-y:auto;}
+  #map .body::-webkit-scrollbar{width:4px;}
+  #map .body::-webkit-scrollbar-thumb{background:var(--cyan-dim);}
+  .sector{font-size:9px; letter-spacing:3px; color:var(--cyan-dim); opacity:.75; padding:8px 4px 3px;}
+  .sector.uncharted{color:var(--red); opacity:.8;}
+  .leg{display:flex; align-items:center; gap:8px; padding:4px 4px; border-radius:2px; position:relative;}
+  .leg .dot{width:8px; height:8px; border-radius:50%; border:1px solid var(--cyan-dim); flex-shrink:0;}
+  .leg .name{flex:1; letter-spacing:1px; color:var(--cyan-dim);}
+  .leg .au{font-size:9px; color:var(--cyan-dim); opacity:.7;}
+  .leg.current .dot{background:var(--amber); border-color:var(--amber); box-shadow:0 0 6px var(--amber);}
+  .leg.current .name{color:var(--amber);}
+  .leg.passed .dot{background:var(--cyan); border-color:var(--cyan);}
+  .leg.passed .name{color:var(--cyan);}
+  .leg.unmapped .dot{border-style:dashed; border-color:var(--red);}
+  .leg.unmapped .name{color:#c96a75;}
+  .leg.unmapped.current .dot{background:var(--red); border-color:var(--red); box-shadow:0 0 6px var(--red);}
+  .leg.unmapped.current .name{color:var(--red);}
+  #trackbar{position:relative; height:3px; background:rgba(94,235,224,.15); margin:2px 8px 4px;}
+  #trackfill{position:absolute; top:0; left:0; height:100%; width:0%; background:var(--amber); box-shadow:0 0 6px var(--amber);}
+  #distReadout{font-size:9px; letter-spacing:1px; color:var(--cyan-dim); text-align:right; padding:0 8px 4px;}
+
+  #inventory{position:absolute; top:50%; left:16px; transform:translateY(-50%); width:min(170px,38vw); font-size:11px;}
+  #invGrid{display:grid; grid-template-columns:repeat(3,1fr); gap:8px;}
+  .invSlot{position:relative; aspect-ratio:1; border:1px solid var(--line); background:rgba(94,235,224,.05);
+    display:flex; align-items:center; justify-content:center; cursor:pointer; pointer-events:auto;}
+  .invSlot:hover{background:rgba(94,235,224,.15);}
+  .invSlot.empty{opacity:.35; cursor:default;}
+  .invSlot.empty:hover{background:rgba(94,235,224,.05);}
+  .invSlot .icon{width:56%; height:56%;}
+  .invSlot .icon.bomb{background:#ff5a2e; box-shadow:0 0 8px rgba(255,90,46,.6);
+    clip-path:polygon(50% 0%,100% 38%,82% 100%,18% 100%,0% 38%);}
+  .invSlot .icon.armor{background:#5eebe0; box-shadow:0 0 8px rgba(94,235,224,.6);
+    clip-path:polygon(35% 0%,65% 0%,65% 35%,100% 35%,100% 65%,65% 65%,65% 100%,35% 100%,35% 65%,0% 65%,0% 35%,35% 35%);}
+  .invSlot .icon.powerup{background:#ffe066; box-shadow:0 0 8px rgba(255,224,102,.6);
+    clip-path:polygon(25% 0%,75% 0%,100% 50%,75% 100%,25% 100%,0% 50%);}
+  .invSlot .count{position:absolute; bottom:2px; right:4px; font-family:'Orbitron',sans-serif; font-size:10px; color:var(--amber); text-shadow:0 0 4px rgba(255,176,46,.6);}
+  #invHint{font-size:9px; letter-spacing:1px; color:var(--cyan-dim); text-align:center; margin-top:8px;}
+
+  #footerHud{position:absolute; bottom:14px; left:50%; transform:translateX(-50%); text-align:center;}
+  #status{font-size:10px; letter-spacing:3px; color:var(--cyan-dim);}
+  #status .live{color:var(--amber);}
+  #msStatus{position:absolute; bottom:16px; right:16px; width:min(220px,42vw); font-size:11px;}
+  #topleft{position:absolute; top:16px; left:16px; display:flex; flex-direction:column; gap:12px; width:min(220px,42vw); pointer-events:none;}
+  #topleft .panel{font-size:11px;}
+  .gauge{display:flex; align-items:center; gap:6px; margin-bottom:8px; font-size:10px;}
+  .gauge:last-of-type{margin-bottom:4px;}
+  .glabel{width:60px; color:var(--cyan-dim); letter-spacing:1px; flex-shrink:0;}
+  .gbar{flex:1; height:5px; background:rgba(94,235,224,.15); position:relative;}
+  .gfill{position:absolute; top:0; left:0; height:100%; background:var(--cyan); transition:width .25s;}
+  .gfill.warn{background:var(--amber);}
+  .gfill.crit{background:var(--red);}
+  .gval{width:32px; text-align:right; color:var(--cyan);}
+  .sysline{font-size:9px; letter-spacing:2px; color:var(--cyan-dim); margin-top:4px;}
+  .sysline.crit{color:var(--red);}
+  .sysline.inv{color:#ffe066; text-shadow:0 0 6px rgba(255,224,102,.6);}
+  .wpn-switch{display:flex; align-items:center; justify-content:space-between; gap:6px; margin-bottom:5px;}
+  .wpn-switch button{pointer-events:auto; cursor:pointer; background:transparent; border:1px solid var(--line); color:var(--cyan);
+    width:26px; height:26px; font-size:14px; line-height:1; flex-shrink:0;}
+  .wpn-switch button:hover{background:rgba(94,235,224,.15);}
+  #wpnName{flex:1; text-align:center; font-family:'Orbitron',sans-serif; font-size:12px; letter-spacing:2px; color:var(--amber); text-shadow:0 0 8px rgba(255,176,46,.5);}
+  #wpnDesc{font-size:9px; letter-spacing:1px; color:var(--cyan-dim); text-align:center; margin-bottom:8px;}
+  #wpnDots{display:flex; justify-content:center; gap:5px;}
+  .wdot{width:6px; height:6px; border-radius:50%; border:1px solid var(--cyan-dim);}
+  .wdot.active{background:var(--amber); border-color:var(--amber); box-shadow:0 0 5px var(--amber);}
+
+  #pickupMsg{position:absolute; top:128px; left:50%; transform:translateX(-50%); font-family:'Orbitron',sans-serif; font-size:13px;
+    letter-spacing:2px; text-shadow:0 0 10px currentColor; opacity:0; transition:opacity .35s; pointer-events:none; white-space:nowrap; text-align:center;}
+  #pickupMsg.show{opacity:1;}
+
+  #bombFlash{position:fixed; inset:0; z-index:4; background:#fff; opacity:0; pointer-events:none;}
+  #bombFlash.flash{animation:bombFlashAnim .5s ease-out;}
+  @keyframes bombFlashAnim{0%{opacity:.92;} 100%{opacity:0;}}
+  #hitFlash{position:fixed; inset:0; z-index:4; background:#ff2d3d; opacity:0; pointer-events:none;}
+  #hitFlash.flash{animation:hitFlashAnim .35s ease-out;}
+  @keyframes hitFlashAnim{0%{opacity:.5;} 100%{opacity:0;}}
+
+  #planetLabels{position:fixed; inset:0; z-index:2; pointer-events:none;}
+  .planet-label{position:absolute; transform:translate(-50%,-130%); text-align:center; white-space:nowrap;}
+  .planet-label .pname{font-family:'Orbitron',sans-serif; font-weight:700; font-size:12px; letter-spacing:2px; color:var(--cyan); text-shadow:0 0 6px rgba(94,235,224,.75);}
+  .planet-label .pprox{font-size:9px; letter-spacing:1px; color:var(--cyan-dim); margin-top:2px;}
+
+  #bossBar{position:fixed; top:64px; left:50%; transform:translateX(-50%); width:min(380px,74vw); z-index:3;
+    display:none; text-align:center; pointer-events:none;}
+  #bossBar.show{display:block;}
+  #bossBar .label{font-family:'Orbitron',sans-serif; font-size:12px; letter-spacing:3px; color:var(--red);
+    text-shadow:0 0 8px rgba(255,77,94,.6); margin-bottom:5px;}
+  #bossHpBar{height:8px; background:rgba(255,77,94,.15); border:1px solid var(--red); position:relative;}
+  #bossHpFill{position:absolute; top:0; left:0; height:100%; width:100%; background:var(--red); box-shadow:0 0 8px var(--red); transition:width .15s;}
+
+  #splash{position:fixed; inset:0; z-index:10; display:flex; align-items:center; justify-content:center; flex-direction:column;
+    background:rgba(4,7,10,.85); pointer-events:auto; text-align:center; padding:20px;}
+  .splash-title{font-family:'Orbitron',sans-serif; font-size:clamp(18px,3.6vw,30px); letter-spacing:4px; color:var(--cyan);
+    text-shadow:0 0 16px rgba(94,235,224,.6); margin-bottom:6px;}
+  .splash-sub{font-size:10px; letter-spacing:3px; color:var(--cyan-dim); margin-bottom:26px;}
+  #shipSelect{display:flex; gap:16px; margin-bottom:24px; flex-wrap:wrap; justify-content:center;}
+  .ship-card{width:170px; border:1px solid var(--line); background:rgba(94,235,224,.05); padding:14px; cursor:pointer;
+    clip-path:polygon(12px 0,100% 0,100% calc(100% - 12px),calc(100% - 12px) 100%,0 100%,0 12px);}
+  .ship-card:hover{background:rgba(94,235,224,.12);}
+  .ship-card.selected{border-color:var(--amber); background:rgba(255,176,46,.1); box-shadow:0 0 14px rgba(255,176,46,.3);}
+  .ship-card h3{font-family:'Orbitron',sans-serif; font-size:12px; letter-spacing:2px; color:var(--cyan); margin-bottom:8px;}
+  .ship-card.selected h3{color:var(--amber);}
+  .ship-card p{font-size:9px; color:var(--cyan-dim); letter-spacing:1px; margin-bottom:10px; line-height:1.5;}
+  .ship-stat{display:flex; align-items:center; gap:6px; margin-bottom:5px; font-size:9px; color:var(--cyan-dim);}
+  .ship-stat .slabel{width:44px; text-align:left; flex-shrink:0;}
+  .ship-stat-bar{flex:1; height:4px; background:rgba(94,235,224,.15); position:relative;}
+  .ship-stat-fill{position:absolute; top:0; left:0; height:100%; background:var(--cyan);}
+  #modeToggle{display:flex; align-items:center; gap:14px; margin-bottom:26px; font-size:11px; letter-spacing:2px; color:var(--cyan-dim);}
+  #modeToggle span{opacity:.4; transition:opacity .2s;}
+  #modeToggle span.active{opacity:1; color:var(--cyan);}
+  .toggle-switch{width:50px; height:24px; border:1px solid var(--line); border-radius:13px; position:relative; cursor:pointer; background:rgba(94,235,224,.08); flex-shrink:0;}
+  .toggle-knob{position:absolute; top:2px; left:2px; width:18px; height:18px; border-radius:50%; background:var(--cyan); transition:left .2s; box-shadow:0 0 6px var(--cyan);}
+  .toggle-switch.on .toggle-knob{left:27px; background:var(--red); box-shadow:0 0 6px var(--red);}
+  #startBtn{pointer-events:auto; cursor:pointer; background:transparent; border:1px solid var(--cyan); color:var(--cyan);
+    font-family:'Orbitron',sans-serif; letter-spacing:4px; padding:12px 38px; font-size:13px;}
+  #startBtn:hover{background:rgba(94,235,224,.15);}
+
+  #gameOver{position:fixed; inset:0; z-index:5; display:none; align-items:center; justify-content:center; flex-direction:column;
+    background:rgba(4,7,10,.78); pointer-events:auto; text-align:center;}
+  #gameOver.show{display:flex;}
+  #gameOver h1{font-family:'Orbitron',sans-serif; color:var(--red); font-size:clamp(20px,4vw,32px); letter-spacing:4px; text-shadow:0 0 16px rgba(255,77,94,.7);}
+  #gameOver p{color:var(--cyan-dim); font-size:12px; letter-spacing:2px; margin:12px 0 22px;}
+  #gameOver button{pointer-events:auto; cursor:pointer; background:transparent; border:1px solid var(--red); color:var(--red);
+    font-family:'Orbitron',sans-serif; letter-spacing:3px; padding:10px 26px; font-size:12px;}
+  #gameOver button:hover{background:rgba(255,77,94,.18);}
+  #gameOverBtns{display:flex; gap:14px; flex-wrap:wrap; justify-content:center;}
+  #shipSelectBtn2{border-color:var(--cyan) !important; color:var(--cyan) !important;}
+  #shipSelectBtn2:hover{background:rgba(94,235,224,.15) !important;}
+
+  @media (max-width:640px){
+    #ctrl{width:calc(100vw - 32px); left:16px;}
+    #map{width:calc(100vw - 32px); left:16px; right:auto; top:auto; bottom:190px;}
+    #msStatus{width:calc(100vw - 32px); left:16px; right:auto; bottom:auto; top:150px;}
+    #topleft{width:min(200px,52vw); top:16px;}
+  }
+</style>
+</head>
+<body>
+<canvas id="scene"></canvas>
+<div id="planetLabels"></div>
+<div class="scanlines"></div>
+<div id="bombFlash"></div>
+<div id="hitFlash"></div>
+<div id="splash">
+  <div class="splash-title">MOBILE SUIT &mdash; 045MW</div>
+  <div class="splash-sub">NEWTYPE COMBAT SYSTEM // SELECT UNIT</div>
+  <div id="shipSelect">
+    <div class="ship-card selected" id="shipCard0" data-ship="0">
+      <h3>TYPE-045 SCOUT</h3>
+      <p>BALANCED FRAME<br>STANDARD OUTPUT</p>
+      <div class="ship-stat"><span class="slabel">SPEED</span><div class="ship-stat-bar"><div class="ship-stat-fill" style="width:85%"></div></div></div>
+      <div class="ship-stat"><span class="slabel">POWER</span><div class="ship-stat-bar"><div class="ship-stat-fill" style="width:60%"></div></div></div>
+    </div>
+    <div class="ship-card" id="shipCard1" data-ship="1">
+      <h3>TYPE-045H HEAVY</h3>
+      <p>REINFORCED FRAME<br>HIGH OUTPUT / SLOWER</p>
+      <div class="ship-stat"><span class="slabel">SPEED</span><div class="ship-stat-bar"><div class="ship-stat-fill" style="width:58%"></div></div></div>
+      <div class="ship-stat"><span class="slabel">POWER</span><div class="ship-stat-bar"><div class="ship-stat-fill" style="width:95%"></div></div></div>
+    </div>
+  </div>
+  <div id="modeToggle">
+    <span id="modeLabelFree">FREE FLIGHT</span>
+    <div class="toggle-switch on" id="modeSwitch"><div class="toggle-knob"></div></div>
+    <span id="modeLabelCombat" class="active">COMBAT // ENEMIES ON</span>
+  </div>
+  <button id="startBtn">LAUNCH</button>
+</div>
+<div id="gameOver">
+  <h1>MOBILE SUIT DISABLED</h1>
+  <p>HULL INTEGRITY CRITICAL &mdash; FINAL SCORE <span id="finalScore">0</span></p>
+  <div id="gameOverBtns">
+    <button id="restartBtn">REINITIALIZE</button>
+    <button id="shipSelectBtn2">SHIP SELECT</button>
+  </div>
+</div>
+
+<div id="hud">
+  <div class="frame-corner tl"></div>
+  <div class="frame-corner tr"></div>
+  <div class="frame-corner bl"></div>
+  <div class="frame-corner br"></div>
+
+  <div class="reticle" id="reticle">
+    <svg viewBox="0 0 120 120"><g fill="none" stroke="currentColor" stroke-width="1.2">
+      <circle cx="60" cy="60" r="46"/><circle cx="60" cy="60" r="3"/>
+      <line x1="60" y1="2" x2="60" y2="20"/><line x1="60" y1="100" x2="60" y2="118"/>
+      <line x1="2" y1="60" x2="20" y2="60"/><line x1="100" y1="60" x2="118" y2="60"/>
+    </g></svg>
+  </div>
+
+  <div id="pickupMsg"></div>
+
+  <div id="bossBar">
+    <div class="label">&#9888; MEGA SHIP // HULL INTEGRITY</div>
+    <div id="bossHpBar"><div id="bossHpFill"></div></div>
+  </div>
+
+  <div class="panel" id="inventory">
+    <h2>INVENTORY</h2>
+    <div class="body">
+      <div id="invGrid">
+        <div class="invSlot empty" id="slotBomb">
+          <div class="icon bomb"></div>
+          <div class="count" id="bombCount">0</div>
+        </div>
+        <div class="invSlot empty" id="slotArmor">
+          <div class="icon armor"></div>
+          <div class="count" id="armorCount">0</div>
+        </div>
+        <div class="invSlot empty" id="slotPowerup">
+          <div class="icon powerup"></div>
+          <div class="count" id="powerupCount">0</div>
+        </div>
+      </div>
+      <div id="invHint">SHOOT DEBRIS // CLICK TO USE</div>
+    </div>
+  </div>
+
+  <div class="panel" id="msStatus">
+    <h2>MS STATUS // 045MW</h2>
+    <div class="body">
+      <div class="gauge"><span class="glabel">ARMOR</span><div class="gbar"><div class="gfill" id="gArmor" style="width:100%"></div></div><span class="gval" id="vArmor">100%</span></div>
+      <div class="gauge"><span class="glabel">THRUSTER</span><div class="gbar"><div class="gfill" id="gThruster" style="width:0%"></div></div><span class="gval" id="vThruster">0%</span></div>
+      <div class="gauge"><span class="glabel">ENERGY</span><div class="gbar"><div class="gfill" id="gEnergy" style="width:100%"></div></div><span class="gval" id="vEnergy">100%</span></div>
+      <div class="sysline" id="sysLine">SYSTEMS NOMINAL</div>
+    </div>
+  </div>
+
+  <div id="topleft">
+    <div class="panel" id="wpnSelect">
+      <h2>WEAPON SELECT</h2>
+      <div class="body">
+        <div class="wpn-switch">
+          <button id="wpnPrev" aria-label="Previous weapon">&#8249;</button>
+          <div id="wpnName">BEAM RIFLE</div>
+          <button id="wpnNext" aria-label="Next weapon">&#8250;</button>
+        </div>
+        <div id="wpnDesc">STANDARD OUTPUT</div>
+        <div id="wpnDots"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel" id="ctrl">
+    <h2>FLIGHT CONTROLS</h2>
+    <div class="body">
+      <div class="readout" id="speedReadout">0.00<span> c</span></div>
+      <div class="row">
+        <label>THRUST</label>
+        <input type="range" id="speedSlider" min="0" max="100" value="0">
+      </div>
+      <div class="presets">
+        <button data-v="0" id="btnStop">STOP</button>
+        <button data-v="35" id="btnCruise">CRUISE</button>
+        <button data-v="100" id="btnWarp">WARP</button>
+      </div>
+      <div id="heatlabel"><span>WEAPON HEAT</span><span id="heatpct">0%</span></div>
+      <div id="heatbar"><div id="heatfill"></div></div>
+      <button id="fireBtn">FIRE // SPACE</button>
+      <button id="shipSelectBtn1">&#8249; SHIP SELECT</button>
+    </div>
+  </div>
+
+  <div class="panel" id="map">
+    <h2>GALACTIC JOURNEY MAP</h2>
+    <div class="body">
+      <div id="legend"></div>
+      <div id="trackbar"><div id="trackfill"></div></div>
+      <div id="distReadout">0 AU FROM SOL</div>
+    </div>
+  </div>
+
+  <div id="footerHud">
+    <div class="call">MOBILE SUIT &mdash; 045MW</div>
+    <div class="sub">NEWTYPE COMBAT SYSTEM // PROTOTYPE UNIT</div>
+    <div class="score">SCORE <span id="scoreVal">0</span></div>
+    <div id="status">TARGETS DESTROYED <span class="live" id="destroyCount">0</span> &nbsp;|&nbsp; MOUSE LOOK &nbsp;|&nbsp; LMB FIRE</div>
+  </div>
+</div>
+
+<script>
+// --- panel minimize/expand toggle (applies to every HUD panel) ---
+document.querySelectorAll('.panel > h2').forEach(h=>{
+  h.addEventListener('click', ()=> h.parentElement.classList.toggle('collapsed'));
+});
+
+// ---------- THREE.JS SCENE ----------
+const canvas = document.getElementById('scene');
+const renderer = new THREE.WebGLRenderer({canvas, antialias:true, alpha:false});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.setSize(innerWidth, innerHeight);
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x04070a, 0.0008);
+const camera = new THREE.PerspectiveCamera(75, innerWidth/innerHeight, 0.1, 4000);
+camera.position.z = 0;
+
+addEventListener('resize', ()=>{
+  camera.aspect = innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+// --- pointer-look flight stick: click & hold to look around ---
+let lookYaw = 0, lookPitch = 0, lookRoll = 0;
+let targetYaw = 0, targetPitch = 0, targetRoll = 0;
+const MAX_YAW = THREE.MathUtils.degToRad(38);
+const MAX_PITCH = THREE.MathUtils.degToRad(26);
+const MAX_ROLL = THREE.MathUtils.degToRad(16);
+camera.rotation.order = 'YXZ';
+
+function updateLook(clientX, clientY){
+  const nx = (clientX/innerWidth)*2 - 1;   // -1 (left) .. 1 (right)
+  const ny = (clientY/innerHeight)*2 - 1;  // -1 (top) .. 1 (bottom)
+  targetYaw   = -nx*MAX_YAW;
+  targetPitch = -ny*MAX_PITCH;
+  targetRoll  = -nx*MAX_ROLL*0.5;
+}
+let isFiring = false;
+canvas.addEventListener('contextmenu', e=> e.preventDefault());
+addEventListener('pointermove', e=> updateLook(e.clientX, e.clientY));
+canvas.addEventListener('pointerdown', e=>{
+  canvas.setPointerCapture(e.pointerId);
+  if(e.button === 0){ // left mouse button: fire, hold for sustained fire
+    isFiring = true;
+    fireLaser();
+  }
+});
+canvas.addEventListener('pointerup', e=>{
+  if(e.button === 0) isFiring = false;
+});
+canvas.addEventListener('pointercancel', ()=>{ isFiring = false; });
+
+// --- laser weapon system ---
+const lasers = [];
+const WEAPONS = [
+  {name:'VULCAN',        color:0xfff5a0, cooldown:70,  heat:6,  speed:3200, desc:'RAPID / LOW DAMAGE'},
+  {name:'BEAM RIFLE',    color:0xff4d5e, cooldown:140, heat:14, speed:2600, desc:'STANDARD OUTPUT'},
+  {name:'MEGA BEAM',     color:0x8fe0ff, cooldown:260, heat:24, speed:3000, desc:'HIGH YIELD / CYAN CHARGE'},
+  {name:'HYPER BAZOOKA', color:0xffb02e, cooldown:460, heat:36, speed:1700, desc:'HEAVY / SLOW RELOAD'},
+];
+let wIdx = 1; // default: Beam Rifle
+const MAX_HEAT = 100;
+const HEAT_COOL_RATE = 38;   // per second
+let weaponHeat = 0;
+let lastShotAt = -9999;
+const reticleEl = document.getElementById('reticle');
+const fireBtn = document.getElementById('fireBtn');
+const heatfillEl = document.getElementById('heatfill');
+const heatpctEl = document.getElementById('heatpct');
+const wpnNameEl = document.getElementById('wpnName');
+const wpnDescEl = document.getElementById('wpnDesc');
+const wpnDotsEl = document.getElementById('wpnDots');
+WEAPONS.forEach(()=>{ const d=document.createElement('div'); d.className='wdot'; wpnDotsEl.appendChild(d); });
+function updateWeaponUI(){
+  const w = WEAPONS[wIdx];
+  wpnNameEl.textContent = w.name;
+  wpnDescEl.textContent = w.desc;
+  [...wpnDotsEl.children].forEach((d,i)=> d.classList.toggle('active', i===wIdx));
+}
+function cycleWeapon(dir){
+  wIdx = (wIdx + dir + WEAPONS.length) % WEAPONS.length;
+  updateWeaponUI();
+}
+document.getElementById('wpnPrev').addEventListener('click', ()=>cycleWeapon(-1));
+document.getElementById('wpnNext').addEventListener('click', ()=>cycleWeapon(1));
+updateWeaponUI();
+
+function flashReticle(){
+  reticleEl.classList.add('firing');
+  setTimeout(()=>reticleEl.classList.remove('firing'), 90);
+}
+
+function fireLaser(){
+  if(!gameStarted || gameOver) return;
+  const now = performance.now();
+  const w = WEAPONS[wIdx];
+  if(weaponHeat >= MAX_HEAT) return;
+  if(now - lastShotAt < w.cooldown) return;
+  lastShotAt = now;
+  weaponHeat = Math.min(MAX_HEAT, weaponHeat + w.heat);
+  flashReticle();
+
+  const dir = new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion);
+  [-16,16].forEach(side=>{ // twin wing-mounted cannons
+    const offset = new THREE.Vector3(side,-10,-10).applyQuaternion(camera.quaternion);
+    const geo = new THREE.BoxGeometry(0.9,0.9,26);
+    const mat = new THREE.MeshBasicMaterial({color:w.color, transparent:true, opacity:1});
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.copy(camera.position).add(offset);
+    mesh.quaternion.copy(camera.quaternion);
+    scene.add(mesh);
+    lasers.push({mesh, dir:dir.clone(), life:0, speed:w.speed});
+  });
+}
+
+addEventListener('keydown', e=>{
+  if(e.code === 'Space'){ e.preventDefault(); fireLaser(); }
+  if(e.code === 'KeyQ') cycleWeapon(-1);
+  if(e.code === 'KeyE') cycleWeapon(1);
+});
+fireBtn.addEventListener('pointerdown', e=>{ e.stopPropagation(); fireLaser(); });
+
+// --- starfield (streaks toward camera) ---
+const STAR_N = 700, SPREAD = 900, DEPTH = 1200;
+const starPos = new Float32Array(STAR_N*6); // line: start+end per star
+const starGeo = new THREE.BufferGeometry();
+const stars = [];
+for(let i=0;i<STAR_N;i++){
+  const s = {
+    x:(Math.random()-0.5)*SPREAD,
+    y:(Math.random()-0.5)*SPREAD,
+    z:Math.random()*DEPTH - DEPTH
+  };
+  stars.push(s);
+}
+starGeo.setAttribute('position', new THREE.BufferAttribute(starPos,3));
+const starMat = new THREE.LineBasicMaterial({color:0x9fe8ff, transparent:true, opacity:0.8});
+const starLines = new THREE.LineSegments(starGeo, starMat);
+scene.add(starLines);
+
+// --- tiny explosions ---
+const explosions = [];
+function spawnExplosion(origin){
+  const geo = new THREE.BufferGeometry();
+  const n = 22;
+  const pos = new Float32Array(n*3);
+  const vel = [];
+  if(!origin) origin = new THREE.Vector3((Math.random()-0.5)*300,(Math.random()-0.5)*220,-Math.random()*600-200);
+  for(let i=0;i<n;i++){
+    pos[i*3]=origin.x; pos[i*3+1]=origin.y; pos[i*3+2]=origin.z;
+    vel.push(new THREE.Vector3((Math.random()-0.5),(Math.random()-0.5),(Math.random()-0.5)).normalize().multiplyScalar(0.6+Math.random()*1.2));
+  }
+  geo.setAttribute('position', new THREE.BufferAttribute(pos,3));
+  const color = Math.random()>0.5 ? 0xffb02e : 0xff8a5e;
+  const mat = new THREE.PointsMaterial({color, size:2.6, transparent:true, opacity:1, blending:THREE.AdditiveBlending});
+  const pts = new THREE.Points(geo, mat);
+  scene.add(pts);
+  explosions.push({pts, geo, mat, vel, life:0});
+}
+setInterval(()=>{ if(Math.random()<0.7) spawnExplosion(); }, 900);
+
+// --- planets/bodies rendered in the viewport (near-field, not to scale) ---
+const PLANET_DEFS = [
+  {name:'MERCURY', color:0x9c9084, r:6},
+  {name:'VENUS',   color:0xe0c290, r:10},
+  {name:'EARTH',   color:0x4c8ee0, r:11},
+  {name:'MARS',    color:0xc1583a, r:8},
+  {name:'JUPITER', color:0xd8b48a, r:26},
+  {name:'SATURN',  color:0xe4cf9c, r:22},
+  {name:'URANUS',  color:0x8fd6e0, r:16},
+  {name:'NEPTUNE', color:0x5a72e0, r:16},
+  {name:'PROXIMA B', color:0xd97a4a, r:9},
+  {name:'SIRIUS A', color:0xcfe8ff, r:20},
+];
+const planetGroup = new THREE.Group();
+scene.add(planetGroup);
+const planetMeshes = PLANET_DEFS.map((p,i)=>{
+  const geo = new THREE.SphereGeometry(p.r,20,20);
+  const mat = new THREE.MeshBasicMaterial({color:p.color});
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.userData.baseZ = -400 - i*380;
+  mesh.userData.name = p.name;
+  mesh.position.set((Math.random()-0.5)*500,(Math.random()-0.5)*260, mesh.userData.baseZ);
+  if(p.name==='SATURN'){
+    const ring = new THREE.Mesh(new THREE.RingGeometry(p.r*1.4,p.r*2.1,32), new THREE.MeshBasicMaterial({color:0xcdbb95, side:THREE.DoubleSide, transparent:true, opacity:0.6}));
+    ring.rotation.x = Math.PI/2.4;
+    mesh.add(ring);
+  }
+  planetGroup.add(mesh);
+  return mesh;
+});
+// screen-space name/proximity labels, one per planet, faded in as you approach
+const planetLabelsEl = document.getElementById('planetLabels');
+const planetLabels = planetMeshes.map(mesh=>{
+  const el = document.createElement('div');
+  el.className = 'planet-label';
+  el.innerHTML = `<div class="pname">${mesh.userData.name}</div><div class="pprox"></div>`;
+  planetLabelsEl.appendChild(el);
+  return {mesh, el, proxEl: el.querySelector('.pprox')};
+});
+
+// distant sun glow behind everything
+const sunMat = new THREE.MeshBasicMaterial({color:0xfff2c8});
+const sun = new THREE.Mesh(new THREE.SphereGeometry(70,24,24), sunMat);
+sun.position.set(0,0,-3300);
+scene.add(sun);
+
+// --- destructible asteroid field ---
+const rockLight = new THREE.DirectionalLight(0xbfe8ff, 1.1);
+rockLight.position.set(-200, 300, 100);
+scene.add(rockLight);
+scene.add(new THREE.AmbientLight(0x33302c, 1.2));
+const ASTEROID_COUNT = 16;
+const asteroids = [];
+let destroyedCount = 0;
+const destroyCountEl = document.getElementById('destroyCount');
+let score = 0;
+let armorHP = 100;
+let gameOver = false;
+const scoreValEl = document.getElementById('scoreVal');
+const finalScoreEl = document.getElementById('finalScore');
+const gameOverEl = document.getElementById('gameOver');
+function addScore(pts){
+  score += pts;
+  scoreValEl.textContent = score;
+}
+function takeHullDamage(amount){
+  if(gameOver) return;
+  if(performance.now() < invincibleUntil) return;
+  armorHP = Math.max(0, armorHP - amount);
+  if(armorHP <= 0){
+    gameOver = true;
+    finalScoreEl.textContent = score;
+    gameOverEl.classList.add('show');
+  }
+}
+function resetGameState(){
+  gameOver = false;
+  armorHP = 100;
+  invincibleUntil = 0;
+  score = 0;
+  destroyedCount = 0;
+  scoreValEl.textContent = 0;
+  destroyCountEl.textContent = 0;
+  bombCount = 0;
+  armorCount = 0;
+  powerupCount = 0;
+  updateInventoryUI();
+  gameOverEl.classList.remove('show');
+  asteroids.forEach(a=>resetAsteroid(a, true));
+  enemies.forEach(e=>resetEnemy(e, true));
+  pickups.forEach(p=>resetPickup(p, true));
+  lasers.forEach(l=>{ scene.remove(l.mesh); l.mesh.geometry.dispose(); l.mesh.material.dispose(); });
+  lasers.length = 0;
+  enemyBolts.forEach(b=>{ scene.remove(b.mesh); b.mesh.geometry.dispose(); b.mesh.material.dispose(); });
+  enemyBolts.length = 0;
+  bossActive = false;
+  bossHitsTaken = 0;
+  bossGroup.visible = false;
+  updateBossUI();
+  lastLegIdx = Math.floor(journeyIndex);
+}
+function returnToSplash(){
+  resetGameState();
+  gameStarted = false;
+  document.getElementById('splash').style.display = 'flex';
+}
+document.getElementById('restartBtn').addEventListener('click', resetGameState);
+document.getElementById('shipSelectBtn1').addEventListener('click', returnToSplash);
+document.getElementById('shipSelectBtn2').addEventListener('click', returnToSplash);
+function resetAsteroid(a, farSpawn){
+  const r = 5 + Math.random()*9;
+  a.scale.setScalar(r/a.userData.baseRadius);
+  a.userData.radius = r;
+  a.position.set(
+    (Math.random()-0.5)*520,
+    (Math.random()-0.5)*300,
+    farSpawn ? -DEPTH - Math.random()*300 : Math.random()*-DEPTH
+  );
+  a.rotation.set(Math.random()*Math.PI, Math.random()*Math.PI, Math.random()*Math.PI);
+  a.userData.spin = new THREE.Vector3((Math.random()-0.5)*0.8,(Math.random()-0.5)*0.8,(Math.random()-0.5)*0.8);
+}
+for(let i=0;i<ASTEROID_COUNT;i++){
+  const geo = new THREE.IcosahedronGeometry(1,0);
+  const pos = geo.attributes.position;
+  for(let v=0; v<pos.count; v++){
+    const p = new THREE.Vector3().fromBufferAttribute(pos,v);
+    p.multiplyScalar(0.78 + Math.random()*0.44);
+    pos.setXYZ(v,p.x,p.y,p.z);
+  }
+  geo.computeVertexNormals();
+  const mat = new THREE.MeshLambertMaterial({color:0x8a7c6b, flatShading:true});
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.userData.baseRadius = 1;
+  resetAsteroid(mesh, false);
+  scene.add(mesh);
+  asteroids.push(mesh);
+}
+
+// --- hostile enemy fighters ---
+const ENEMY_COUNT = 5;
+const enemies = [];
+function resetEnemy(e, farSpawn){
+  e.position.set((Math.random()-0.5)*440, (Math.random()-0.5)*260, farSpawn ? -DEPTH - Math.random()*400 : Math.random()*-DEPTH);
+  e.userData.phase = Math.random()*Math.PI*2;
+  e.userData.amp = 30 + Math.random()*70;
+  e.userData.freq = 0.6 + Math.random()*0.8;
+  e.userData.baseX = e.position.x;
+  e.userData.baseY = e.position.y;
+  e.userData.radius = 10;
+  e.userData.nextFireAt = performance.now() + 1500 + Math.random()*2500;
+}
+const enemyGeo = new THREE.ConeGeometry(6,20,4);
+enemyGeo.rotateX(Math.PI/2);
+for(let i=0;i<ENEMY_COUNT;i++){
+  const mat = new THREE.MeshLambertMaterial({color:0xff4d5e, emissive:0x330409, flatShading:true});
+  const mesh = new THREE.Mesh(enemyGeo, mat);
+  resetEnemy(mesh, false);
+  mesh.userData.nextFireAt = performance.now() + 1500 + Math.random()*2500;
+  scene.add(mesh);
+  enemies.push(mesh);
+}
+
+// --- enemy return fire ---
+const enemyBolts = [];
+const hitFlashEl = document.getElementById('hitFlash');
+function triggerHitFlash(){
+  hitFlashEl.classList.remove('flash'); void hitFlashEl.offsetWidth; hitFlashEl.classList.add('flash');
+}
+function fireEnemyShot(en, color, dmg){
+  const dir = new THREE.Vector3(0,0,0).sub(en.position).normalize();
+  const geo = new THREE.SphereGeometry(2.4,6,6);
+  const mat = new THREE.MeshBasicMaterial({color: color || 0xff7a3d, transparent:true, opacity:1});
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.copy(en.position);
+  scene.add(mesh);
+  enemyBolts.push({mesh, dir, life:0, dmg: dmg || 2.5});
+}
+
+// --- mega ship boss: gates progress at every waypoint until destroyed ---
+const bossGroup = new THREE.Group();
+const bossHullMat = new THREE.MeshLambertMaterial({color:0x4a1420, flatShading:true});
+const bossAccentMat = new THREE.MeshBasicMaterial({color:0xff2d9e});
+bossGroup.add(new THREE.Mesh(new THREE.BoxGeometry(90,26,140), bossHullMat));
+const bossBridge = new THREE.Mesh(new THREE.BoxGeometry(30,22,30), bossHullMat);
+bossBridge.position.set(0,22,-40);
+bossGroup.add(bossBridge);
+[-52,52].forEach(x=>{
+  const fin = new THREE.Mesh(new THREE.BoxGeometry(8,6,64), bossAccentMat);
+  fin.position.set(x,0,25);
+  bossGroup.add(fin);
+});
+bossGroup.visible = false;
+scene.add(bossGroup);
+const bossBarEl = document.getElementById('bossBar');
+const bossHpFillEl = document.getElementById('bossHpFill');
+const BOSS_MAX_HP = 60;
+let bossActive = false;
+let bossHitsTaken = 0;
+function updateBossUI(){
+  bossBarEl.classList.toggle('show', bossActive);
+  bossHpFillEl.style.width = Math.max(0,(BOSS_MAX_HP-bossHitsTaken)/BOSS_MAX_HP*100)+'%';
+}
+function spawnBoss(){
+  if(bossActive) return;
+  bossActive = true;
+  bossHitsTaken = 0;
+  bossGroup.position.set(0,0,-700);
+  bossGroup.visible = true;
+  bossGroup.userData.nextFireAt = performance.now() + 1200;
+  flashPickupMsg('WARNING \u2014 MEGA SHIP DETECTED', '#ff2d3d');
+  updateBossUI();
+}
+function defeatBoss(){
+  for(let k=0;k<5;k++){
+    spawnExplosion(bossGroup.position.clone().add(new THREE.Vector3((Math.random()-0.5)*70,(Math.random()-0.5)*40,(Math.random()-0.5)*70)));
+  }
+  addScore(500);
+  destroyedCount++; destroyCountEl.textContent = destroyedCount;
+  flashPickupMsg('MEGA SHIP DESTROYED \u2014 ROUTE CLEAR', '#ff4d5e');
+  bossActive = false;
+  bossGroup.visible = false;
+  updateBossUI();
+}
+
+// --- collectible debris: armor repair, field-clearing bomb, invincibility+warp boost ---
+const pickups = [];
+function makePickupMesh(type){
+  let geo;
+  if(type === 'repair'){
+    geo = new THREE.OctahedronGeometry(9,0);
+  } else if(type === 'invincible'){
+    geo = new THREE.SphereGeometry(9,14,14);
+  } else {
+    geo = new THREE.IcosahedronGeometry(9,0);
+    const pos = geo.attributes.position;
+    for(let v=0; v<pos.count; v++){
+      const p = new THREE.Vector3().fromBufferAttribute(pos,v);
+      p.multiplyScalar(0.68 + Math.random()*0.6);
+      pos.setXYZ(v,p.x,p.y,p.z);
+    }
+    geo.computeVertexNormals();
+  }
+  const colors = {repair:0x5eebe0, bomb:0xff5a2e, invincible:0xffe066};
+  const mat = new THREE.MeshBasicMaterial({color: colors[type], transparent:true, opacity:0.92});
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.userData.type = type;
+  mesh.userData.radius = 10;
+  mesh.userData.seed = Math.random()*100;
+  return mesh;
+}
+function resetPickup(p, farSpawn){
+  p.position.set((Math.random()-0.5)*480, (Math.random()-0.5)*260, farSpawn ? -DEPTH - 400 - Math.random()*500 : Math.random()*-DEPTH);
+}
+[...Array(2)].forEach(()=>{ const m=makePickupMesh('repair'); resetPickup(m,false); scene.add(m); pickups.push(m); });
+const bombPickup = makePickupMesh('bomb'); resetPickup(bombPickup,false); scene.add(bombPickup); pickups.push(bombPickup);
+const invinciblePickup = makePickupMesh('invincible'); resetPickup(invinciblePickup,false); scene.add(invinciblePickup); pickups.push(invinciblePickup);
+
+let pickupMsgTimer = null;
+const pickupMsgEl = document.getElementById('pickupMsg');
+function flashPickupMsg(text, color){
+  pickupMsgEl.textContent = text;
+  pickupMsgEl.style.color = color;
+  pickupMsgEl.classList.add('show');
+  clearTimeout(pickupMsgTimer);
+  pickupMsgTimer = setTimeout(()=>pickupMsgEl.classList.remove('show'), 1800);
+}
+const INVINCIBLE_DURATION = 20000; // ms
+let invincibleUntil = 0;
+
+// --- inventory: shoot debris to stock items, click/hotkey to use them ---
+let bombCount = 0, armorCount = 0, powerupCount = 0;
+const bombCountEl = document.getElementById('bombCount');
+const armorCountEl = document.getElementById('armorCount');
+const powerupCountEl = document.getElementById('powerupCount');
+const slotBombEl = document.getElementById('slotBomb');
+const slotArmorEl = document.getElementById('slotArmor');
+const slotPowerupEl = document.getElementById('slotPowerup');
+function updateInventoryUI(){
+  bombCountEl.textContent = bombCount;
+  slotBombEl.classList.toggle('empty', bombCount<=0);
+  armorCountEl.textContent = armorCount;
+  slotArmorEl.classList.toggle('empty', armorCount<=0);
+  powerupCountEl.textContent = powerupCount;
+  slotPowerupEl.classList.toggle('empty', powerupCount<=0);
+}
+function useBomb(){
+  if(!gameStarted || gameOver || bombCount<=0) return;
+  bombCount--; updateInventoryUI();
+  const flashEl = document.getElementById('bombFlash');
+  flashEl.classList.remove('flash'); void flashEl.offsetWidth; flashEl.classList.add('flash');
+  let cleared = 0;
+  asteroids.forEach(a=>{ spawnExplosion(a.position.clone()); resetAsteroid(a,true); cleared++; });
+  enemies.forEach(en=>{ spawnExplosion(en.position.clone()); resetEnemy(en,true); cleared++; });
+  addScore(cleared*20);
+  destroyedCount += cleared; destroyCountEl.textContent = destroyedCount;
+  flashPickupMsg('ORBITAL STRIKE \u2014 FIELD CLEARED', '#ff5a2e');
+}
+function useArmor(){
+  if(!gameStarted || gameOver || armorCount<=0) return;
+  armorCount--; updateInventoryUI();
+  armorHP = Math.min(100, armorHP + 25);
+  flashPickupMsg('ARMOR REPAIRED +25%', '#5eebe0');
+}
+function usePowerup(){
+  if(!gameStarted || gameOver || powerupCount<=0) return;
+  powerupCount--; updateInventoryUI();
+  invincibleUntil = performance.now() + INVINCIBLE_DURATION;
+  flashPickupMsg('INVINCIBILITY // WARP BOOST', '#ffe066');
+}
+slotBombEl.addEventListener('click', useBomb);
+slotArmorEl.addEventListener('click', useArmor);
+slotPowerupEl.addEventListener('click', usePowerup);
+addEventListener('keydown', e=>{
+  if(e.code === 'KeyB') useBomb();
+  if(e.code === 'KeyR') useArmor();
+  if(e.code === 'KeyP') usePowerup();
+});
+updateInventoryUI();
+
+// ---------- PRE-GAME STATE: splash/ship-select/mode ----------
+let gameStarted = false;
+let shipSpeedMult = 1, shipPowerMult = 1;
+let freeFlightMode = false;
+
+const SHIPS = [
+  {speedMult:1,    powerMult:1},
+  {speedMult:0.72, powerMult:1.5},
+];
+let selectedShipIdx = 0;
+document.querySelectorAll('.ship-card').forEach(card=>{
+  card.addEventListener('click', ()=>{
+    document.querySelectorAll('.ship-card').forEach(c=>c.classList.remove('selected'));
+    card.classList.add('selected');
+    selectedShipIdx = parseInt(card.dataset.ship,10);
+  });
+});
+let pendingFreeFlight = false;
+const modeSwitchEl = document.getElementById('modeSwitch');
+const modeLabelFreeEl = document.getElementById('modeLabelFree');
+const modeLabelCombatEl = document.getElementById('modeLabelCombat');
+modeSwitchEl.addEventListener('click', ()=>{
+  pendingFreeFlight = !pendingFreeFlight;
+  modeSwitchEl.classList.toggle('on', !pendingFreeFlight);
+  modeLabelFreeEl.classList.toggle('active', pendingFreeFlight);
+  modeLabelCombatEl.classList.toggle('active', !pendingFreeFlight);
+});
+document.getElementById('startBtn').addEventListener('click', ()=>{
+  const ship = SHIPS[selectedShipIdx];
+  shipSpeedMult = ship.speedMult;
+  shipPowerMult = ship.powerMult;
+  freeFlightMode = pendingFreeFlight;
+  enemies.forEach(e=> e.visible = !freeFlightMode);
+  document.getElementById('splash').style.display = 'none';
+  gameStarted = true;
+});
+
+// ---------- FLIGHT STATE ----------
+let throttlePct = 0;      // 0-100 UI
+let speedC = 0;            // fraction of c, drives visuals
+const slider = document.getElementById('speedSlider');
+const readout = document.getElementById('speedReadout');
+const buttons = {stop:document.getElementById('btnStop'), cruise:document.getElementById('btnCruise'), warp:document.getElementById('btnWarp')};
+const gArmor = document.getElementById('gArmor'), vArmor = document.getElementById('vArmor');
+const gThruster = document.getElementById('gThruster'), vThruster = document.getElementById('vThruster');
+const gEnergy = document.getElementById('gEnergy'), vEnergy = document.getElementById('vEnergy');
+const sysLineEl = document.getElementById('sysLine');
+
+function setThrottle(v){
+  throttlePct = v;
+  slider.value = v;
+  Object.values(buttons).forEach(b=>b.classList.remove('active'));
+  if(v==0) buttons.stop.classList.add('active');
+  else if(v==35) buttons.cruise.classList.add('active');
+  else if(v==100) buttons.warp.classList.add('active');
+}
+slider.addEventListener('input', e=> setThrottle(+e.target.value));
+buttons.stop.addEventListener('click', ()=>setThrottle(0));
+buttons.cruise.addEventListener('click', ()=>setThrottle(35));
+buttons.warp.addEventListener('click', ()=>setThrottle(100));
+setThrottle(35);
+canvas.addEventListener('wheel', e=>{
+  e.preventDefault();
+  const delta = e.deltaY > 0 ? -5 : 5;
+  setThrottle(Math.min(100, Math.max(0, throttlePct + delta)));
+}, {passive:false});
+
+// ---------- GALACTIC JOURNEY MAP ----------
+// Route runs from the inner solar system out through charted interstellar
+// space and into the uncharted spiral arms and core of the Milky Way.
+// Distances are for HUD flavor (AU near Sol, light-years beyond) and are
+// display-only; on-screen progress advances leg-by-leg, not to true scale.
+const ROUTE = [
+  {sector:'SOL SYSTEM — CHARTED'},
+  {name:'MERCURY',  dist:'0.39 AU'},
+  {name:'VENUS',    dist:'0.72 AU'},
+  {name:'EARTH',    dist:'1.00 AU'},
+  {name:'MARS',     dist:'1.52 AU'},
+  {name:'ASTEROID BELT', dist:'2.8 AU'},
+  {name:'JUPITER',  dist:'5.20 AU'},
+  {name:'SATURN',   dist:'9.58 AU'},
+  {name:'URANUS',   dist:'19.2 AU'},
+  {name:'NEPTUNE',  dist:'30.1 AU'},
+  {name:'KUIPER BELT', dist:'50 AU'},
+  {name:'OORT CLOUD',  dist:'5,000 AU'},
+  {sector:'LOCAL BUBBLE — CHARTED'},
+  {name:'PROXIMA CENTAURI', dist:'4.24 ly'},
+  {name:'ALPHA CENTAURI',   dist:'4.37 ly'},
+  {name:'BARNARD\u2019S STAR', dist:'5.96 ly'},
+  {name:'SIRIUS',           dist:'8.60 ly'},
+  {name:'ORION ARM EDGE',   dist:'1,000 ly'},
+  {sector:'OUTER ARMS — UNCHARTED', uncharted:true},
+  {name:'PERSEUS ARM',  dist:'6,500 ly', uncharted:true},
+  {name:'SAGITTARIUS ARM', dist:'12,000 ly', uncharted:true},
+  {name:'GALACTIC CORE (SGR A*)', dist:'26,000 ly', uncharted:true},
+  {name:'NORMA ARM', dist:'30,000 ly', uncharted:true},
+  {name:'OUTER RIM', dist:'50,000+ ly', uncharted:true},
+];
+const legendaEl = document.getElementById('legend');
+const trackfill = document.getElementById('trackfill');
+const distReadout = document.getElementById('distReadout');
+const legRows = [];
+ROUTE.forEach((w,i)=>{
+  if(w.sector){
+    const hdr = document.createElement('div');
+    hdr.className = 'sector' + (w.uncharted ? ' uncharted' : '');
+    hdr.textContent = w.sector;
+    legendaEl.appendChild(hdr);
+    legRows.push(null);
+    return;
+  }
+  const row = document.createElement('div');
+  row.className = 'leg' + (w.uncharted ? ' unmapped' : '');
+  row.innerHTML = `<div class="dot"></div><div class="name">${w.name}</div><div class="au">${w.dist}</div>`;
+  legendaEl.appendChild(row);
+  legRows.push(row);
+});
+const N = ROUTE.length;
+let journeyIndex = 0.3; // continuous position along ROUTE
+let lastLegIdx = Math.floor(journeyIndex);
+const earthRouteIdx = ROUTE.findIndex(w=>w.name === 'EARTH');
+const BOSS_CHANCE = 0.5; // odds of a mega ship appearing at any eligible waypoint past Earth
+
+// ---------- ANIMATE ----------
+const clock = new THREE.Clock();
+function animate(){
+  requestAnimationFrame(animate);
+  const dt = Math.min(clock.getDelta(), 0.05);
+
+  // ease speedC toward throttle target
+  const target = gameOver ? 0 : throttlePct/100;
+  speedC += (target - speedC)*0.06;
+  readout.textContent = speedC.toFixed(2) + ' ';
+  readout.innerHTML = speedC.toFixed(2) + '<span> c</span>';
+
+  const boosted = performance.now() < invincibleUntil;
+  const vel = (speedC*speedC*900 + speedC*40) * (boosted ? 2 : 1) * shipSpeedMult; // units/sec, nonlinear ramp
+  camera.fov = 75 + speedC*35;
+  camera.updateProjectionMatrix();
+
+  // ease pointer-look toward target (continuous mouse tracking)
+  lookYaw   += (targetYaw   - lookYaw)*0.08;
+  lookPitch += (targetPitch - lookPitch)*0.08;
+  lookRoll  += (targetRoll  - lookRoll)*0.08;
+  camera.rotation.set(lookPitch, lookYaw, lookRoll);
+
+  // stars: move toward camera, recycle
+  const pos = starGeo.attributes.position.array;
+  for(let i=0;i<STAR_N;i++){
+    const s = stars[i];
+    s.z += vel*dt;
+    if(s.z > 20){
+      s.z = -DEPTH;
+      s.x = (Math.random()-0.5)*SPREAD;
+      s.y = (Math.random()-0.5)*SPREAD;
+    }
+    const streak = 4 + speedC*40;
+    pos[i*6]   = s.x; pos[i*6+1] = s.y; pos[i*6+2] = s.z;
+    pos[i*6+3] = s.x; pos[i*6+4] = s.y; pos[i*6+5] = s.z - streak;
+  }
+  starGeo.attributes.position.needsUpdate = true;
+  starMat.opacity = 0.5 + speedC*0.5;
+
+  if(!gameStarted){
+    renderer.render(scene, camera);
+    return;
+  }
+
+  // planets drift toward camera slowly + reset
+  planetGroup.children.forEach(m=>{
+    m.position.z += vel*dt*0.6;
+    m.rotation.y += dt*0.05;
+    if(m.position.z > 60){
+      m.position.z -= PLANET_DEFS.length*380;
+      m.position.x = (Math.random()-0.5)*500;
+      m.position.y = (Math.random()-0.5)*260;
+    }
+  });
+  sun.position.z += vel*dt*0.15;
+  if(sun.position.z > 60) sun.position.z = -3300;
+
+  // planet labels: project to screen space, fade in and show range as you close distance
+  const projected = new THREE.Vector3();
+  planetLabels.forEach(pl=>{
+    if(pl.mesh.position.z > 30){ pl.el.style.opacity = 0; return; }
+    projected.copy(pl.mesh.position).project(camera);
+    if(projected.z > 1){ pl.el.style.opacity = 0; return; }
+    const dist = Math.abs(pl.mesh.position.z);
+    const prox = THREE.MathUtils.clamp(1 - dist/650, 0, 1);
+    pl.el.style.left = ((projected.x*0.5+0.5)*innerWidth)+'px';
+    pl.el.style.top = ((1-(projected.y*0.5+0.5))*innerHeight)+'px';
+    pl.el.style.opacity = prox.toFixed(2);
+    pl.proxEl.textContent = 'RANGE ' + Math.round(dist) + 'u';
+  });
+
+  // asteroids drift toward camera, tumbling; recycle once passed
+  asteroids.forEach(a=>{
+    a.position.z += vel*dt*0.75 + 6*dt;
+    a.rotation.x += a.userData.spin.x*dt;
+    a.rotation.y += a.userData.spin.y*dt;
+    a.rotation.z += a.userData.spin.z*dt;
+    if(a.position.z > 60) resetAsteroid(a, true);
+  });
+
+  // enemy fighters: weave toward camera, hostile red silhouette; breach = hull damage
+  const t = performance.now()/1000;
+  enemies.forEach(en=>{
+    if(gameOver || freeFlightMode) return;
+    en.position.z += vel*dt*0.85 + 24*dt;
+    en.position.x = en.userData.baseX + Math.sin(t*en.userData.freq + en.userData.phase)*en.userData.amp;
+    en.position.y = en.userData.baseY + Math.cos(t*en.userData.freq*0.7 + en.userData.phase)*en.userData.amp*0.5;
+    en.lookAt(0,0,en.position.z+400);
+    if(en.position.z > 60){
+      resetEnemy(en, true);
+      takeHullDamage(6);
+    } else if(!gameOver && en.position.z > -DEPTH*0.65 && performance.now() > en.userData.nextFireAt){
+      fireEnemyShot(en);
+      en.userData.nextFireAt = performance.now() + 1500 + Math.random()*2200;
+    }
+  });
+
+  // mega ship boss: hovers, weaves, and creeps closer while gating journey progress
+  if(bossActive && !gameOver){
+    bossGroup.position.x = Math.sin(t*0.4)*60;
+    bossGroup.position.y = Math.cos(t*0.3)*30;
+    bossGroup.position.z += vel*dt*0.15;
+    bossGroup.rotation.y += dt*0.12;
+    if(performance.now() > bossGroup.userData.nextFireAt){
+      fireEnemyShot(bossGroup, 0xff2d9e, 6);
+      bossGroup.userData.nextFireAt = performance.now() + 900 + Math.random()*700;
+    }
+  }
+
+  // enemy bolts: home toward the player position, damage hull on impact
+  for(let i=enemyBolts.length-1;i>=0;i--){
+    const b = enemyBolts[i];
+    b.life += dt;
+    b.mesh.position.add(b.dir.clone().multiplyScalar(1000*dt));
+    let done = false;
+    if(b.mesh.position.length() < 18){
+      takeHullDamage(b.dmg);
+      triggerHitFlash();
+      done = true;
+    } else if(b.life > 2.5){
+      done = true;
+    }
+    if(done){
+      scene.remove(b.mesh);
+      b.mesh.geometry.dispose(); b.mesh.material.dispose();
+      enemyBolts.splice(i,1);
+    }
+  }
+
+  // collectible debris: drift toward camera, pulse, auto-collect on approach
+  pickups.forEach(p=>{
+    if(gameOver) return;
+    p.position.z += vel*dt*0.7 + 14*dt;
+    p.rotation.x += dt*0.55; p.rotation.y += dt*0.4;
+    p.scale.setScalar(1 + Math.sin(t*2.4 + p.userData.seed)*0.1);
+    if(p.position.z > 60){
+      resetPickup(p, true);
+    }
+  });
+
+  // explosions lifecycle
+  for(let i=explosions.length-1;i>=0;i--){
+    const ex = explosions[i];
+    ex.life += dt;
+    const p = ex.geo.attributes.position.array;
+    for(let j=0;j<ex.vel.length;j++){
+      p[j*3]   += ex.vel[j].x*20*dt;
+      p[j*3+1] += ex.vel[j].y*20*dt;
+      p[j*3+2] += ex.vel[j].z*20*dt + vel*dt;
+    }
+    ex.geo.attributes.position.needsUpdate = true;
+    ex.mat.opacity = Math.max(0, 1 - ex.life/1.1);
+    if(ex.life > 1.1){
+      scene.remove(ex.pts);
+      ex.geo.dispose(); ex.mat.dispose();
+      explosions.splice(i,1);
+    }
+  }
+
+  // sustained fire while LMB held (rate-limited by cooldown inside fireLaser)
+  if(isFiring) fireLaser();
+
+  const dmgMultiplier = (performance.now() < invincibleUntil ? 3 : 1) * shipPowerMult;
+
+  // laser projectiles: streak forward through the field, fade and cull
+  for(let i=lasers.length-1;i>=0;i--){
+    const l = lasers[i];
+    l.life += dt;
+    l.mesh.position.add(l.dir.clone().multiplyScalar(l.speed*dt));
+    l.mesh.material.opacity = Math.max(0, 1 - l.life/0.7);
+
+    let hit = false;
+    if(bossActive && l.mesh.position.distanceTo(bossGroup.position) < 60){
+      bossHitsTaken += dmgMultiplier;
+      updateBossUI();
+      if(bossHitsTaken >= BOSS_MAX_HP) defeatBoss();
+      hit = true;
+    }
+    if(!hit) for(let j=0;j<asteroids.length;j++){
+      const a = asteroids[j];
+      if(l.mesh.position.distanceTo(a.position) < a.userData.radius + 5*dmgMultiplier){
+        spawnExplosion(a.position.clone());
+        resetAsteroid(a, true);
+        destroyedCount++;
+        destroyCountEl.textContent = destroyedCount;
+        addScore(50);
+        hit = true;
+        break;
+      }
+    }
+    if(!hit) for(let j=0;j<enemies.length;j++){
+      const en = enemies[j];
+      if(l.mesh.position.distanceTo(en.position) < en.userData.radius + 6*dmgMultiplier){
+        spawnExplosion(en.position.clone());
+        resetEnemy(en, true);
+        destroyedCount++;
+        destroyCountEl.textContent = destroyedCount;
+        addScore(150);
+        hit = true;
+        break;
+      }
+    }
+    if(!hit) for(let j=0;j<pickups.length;j++){
+      const p = pickups[j];
+      if(l.mesh.position.distanceTo(p.position) < p.userData.radius + 6){
+        spawnExplosion(p.position.clone());
+        resetPickup(p, true);
+        if(p.userData.type === 'repair'){
+          armorCount++;
+          updateInventoryUI();
+          addScore(20);
+          flashPickupMsg('ARMOR KIT COLLECTED +1', '#5eebe0');
+        } else if(p.userData.type === 'bomb'){
+          bombCount++;
+          updateInventoryUI();
+          addScore(30);
+          flashPickupMsg('BOMB ACQUIRED +1', '#ff5a2e');
+        } else if(p.userData.type === 'invincible'){
+          powerupCount++;
+          updateInventoryUI();
+          addScore(40);
+          flashPickupMsg('POWER CELL COLLECTED +1', '#ffe066');
+        }
+        hit = true;
+        break;
+      }
+    }
+    if(hit || l.life > 0.7 || l.mesh.position.z < -DEPTH*1.3){
+      scene.remove(l.mesh);
+      l.mesh.geometry.dispose(); l.mesh.material.dispose();
+      lasers.splice(i,1);
+    }
+  }
+  // weapon heat cooldown + HUD readout
+  weaponHeat = Math.max(0, weaponHeat - HEAT_COOL_RATE*dt);
+  const heatPct = weaponHeat/MAX_HEAT*100;
+  heatfillEl.style.width = heatPct.toFixed(0)+'%';
+  heatpctEl.textContent = heatPct.toFixed(0)+'%';
+  heatfillEl.classList.toggle('hot', heatPct>50 && heatPct<95);
+  heatfillEl.classList.toggle('overheat', heatPct>=95);
+  fireBtn.disabled = heatPct>=100;
+  fireBtn.textContent = heatPct>=100 ? 'OVERHEAT' : 'FIRE // SPACE';
+
+  // mobile suit status readouts
+  const thrusterPct = throttlePct;
+  const energyPct = 100 - heatPct;
+  const armorPct = Math.max(0, armorHP - 1 + Math.sin(performance.now()/2200)*1);
+  gThruster.style.width = thrusterPct+'%'; vThruster.textContent = thrusterPct.toFixed(0)+'%';
+  gEnergy.style.width = energyPct.toFixed(0)+'%'; vEnergy.textContent = energyPct.toFixed(0)+'%';
+  gEnergy.classList.toggle('warn', energyPct<40 && energyPct>=15);
+  gEnergy.classList.toggle('crit', energyPct<15);
+  gArmor.style.width = armorPct.toFixed(0)+'%'; vArmor.textContent = armorPct.toFixed(0)+'%';
+  gArmor.classList.toggle('warn', armorHP<60 && armorHP>=25);
+  gArmor.classList.toggle('crit', armorHP<25);
+  const overheated = heatPct>=100;
+  sysLineEl.textContent = gameOver ? 'MOBILE SUIT DISABLED' : (boosted ? 'INVINCIBLE // WARP BOOST' : (overheated ? 'WEAPON SYSTEM OVERHEAT' : 'SYSTEMS NOMINAL'));
+  sysLineEl.classList.toggle('crit', overheated || gameOver);
+  sysLineEl.classList.toggle('inv', boosted && !gameOver);
+
+  // galactic journey progress: crawl leg-by-leg through the route, gated by boss fights
+  if(!bossActive) journeyIndex += speedC*dt*0.5;
+  if(journeyIndex >= N) journeyIndex -= N;
+  trackfill.style.width = (journeyIndex/N*100).toFixed(1)+'%';
+  const curIdx = Math.floor(journeyIndex);
+  if(curIdx !== lastLegIdx){
+    lastLegIdx = curIdx;
+    if(ROUTE[curIdx] && ROUTE[curIdx].name && !bossActive && !freeFlightMode && curIdx > earthRouteIdx && Math.random() < BOSS_CHANCE) spawnBoss();
+  }
+  legRows.forEach((row,i)=>{
+    if(!row) return;
+    row.classList.remove('current','passed');
+    if(i < curIdx) row.classList.add('passed');
+    else if(i === curIdx) row.classList.add('current');
+  });
+  const curWaypoint = ROUTE[curIdx];
+  if(curWaypoint && curWaypoint.name){
+    distReadout.textContent = curWaypoint.dist + ' FROM SOL' + (curWaypoint.uncharted ? ' \u2022 UNCHARTED' : '');
+  }
+
+  renderer.render(scene, camera);
+}
+animate();
+</script>
+</body>
+</html>
